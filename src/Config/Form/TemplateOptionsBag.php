@@ -10,9 +10,9 @@ use Bolt\Extension\Bolt\BoltForms\Config\AbstractCascadingBag;
  * Copyright (c) 2014-2016 Gawain Lynch
  *
  * This program is free software: you can redistribute it and/or modify
- * it under the terms of the GNU General Public License as published by
- * the Free Software Foundation, either version 3 of the License, or
- * (at your option) any later version.
+ * it under the terms of the GNU General Public License or GNU Lesser
+ * General Public License as published by the Free Software Foundation,
+ * either version 3 of the Licenses, or (at your option) any later version.
  *
  * This program is distributed in the hope that it will be useful,
  * but WITHOUT ANY WARRANTY; without even the implied warranty of
@@ -25,6 +25,7 @@ use Bolt\Extension\Bolt\BoltForms\Config\AbstractCascadingBag;
  * @author    Gawain Lynch <gawain.lynch@gmail.com>
  * @copyright Copyright (c) 2014-2016, Gawain Lynch
  * @license   http://opensource.org/licenses/GPL-3.0 GNU Public License 3.0
+ * @license   http://opensource.org/licenses/LGPL-3.0 GNU Lesser General Public License 3.0
  */
 class TemplateOptionsBag extends AbstractCascadingBag
 {
@@ -64,6 +65,26 @@ class TemplateOptionsBag extends AbstractCascadingBag
     public function setCss($css)
     {
         $this->set('css', $css);
+
+        return $this;
+    }
+
+    /**
+     * @return string
+     */
+    public function getJs()
+    {
+        return $this->getHierarchicalValue('js');
+    }
+
+    /**
+     * @param string $js
+     *
+     * @return TemplateOptionsBag
+     */
+    public function setJs($js)
+    {
+        $this->set('js', $js);
 
         return $this;
     }
@@ -193,7 +214,7 @@ class TemplateOptionsBag extends AbstractCascadingBag
      */
     public function getFormTheme()
     {
-        return $this->getHierarchicalValue('formtheme');
+        return $this->getHierarchicalValue('form_theme');
     }
 
     /**
@@ -203,7 +224,7 @@ class TemplateOptionsBag extends AbstractCascadingBag
      */
     public function setFormTheme($formTheme)
     {
-        $this->set('formtheme', $formTheme);
+        $this->set('form_theme', $formTheme);
 
         return $this;
     }

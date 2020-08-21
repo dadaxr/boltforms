@@ -13,9 +13,9 @@ use Doctrine\DBAL\Query\QueryBuilder;
  * Copyright (c) 2014-2016 Gawain Lynch
  *
  * This program is free software: you can redistribute it and/or modify
- * it under the terms of the GNU General Public License as published by
- * the Free Software Foundation, either version 3 of the License, or
- * (at your option) any later version.
+ * it under the terms of the GNU General Public License or GNU Lesser
+ * General Public License as published by the Free Software Foundation,
+ * either version 3 of the Licenses, or (at your option) any later version.
  *
  * This program is distributed in the hope that it will be useful,
  * but WITHOUT ANY WARRANTY; without even the implied warranty of
@@ -28,6 +28,7 @@ use Doctrine\DBAL\Query\QueryBuilder;
  * @author    Gawain Lynch <gawain.lynch@gmail.com>
  * @copyright Copyright (c) 2014-2016, Gawain Lynch
  * @license   http://opensource.org/licenses/GPL-3.0 GNU Public License 3.0
+ * @license   http://opensource.org/licenses/LGPL-3.0 GNU Lesser General Public License 3.0
  */
 class ContentTypeResolver extends AbstractChoiceOptionResolver
 {
@@ -35,31 +36,20 @@ class ContentTypeResolver extends AbstractChoiceOptionResolver
     private $em;
     /** @var array */
     private $choices;
-    /** @var bool */
-    private $legacy;
 
     /**
      * Constructor.
-     *
-     * Legacy:
-     * Format of 'contenttype::name::labelfield::valuefield'
-     *  'contenttype' - String constant that always equals 'contenttype'
-     *  'name'        - Name of the contenttype itself
-     *  'labelfield'  - Field to use for the UI displayed to the user
-     *  'valuefield'  - Field to use for the value stored
      *
      * @param string        $formName     Name of the form containing the field
      * @param string        $fieldName    Name of the field
      * @param array         $fieldOptions Options for field
      * @param EntityManager $em
-     * @param bool          $legacy       True if using deprecated value format
      */
-    public function __construct($formName, $fieldName, array $fieldOptions, EntityManager $em, $legacy = false)
+    public function __construct($formName, $fieldName, array $fieldOptions, EntityManager $em)
     {
         parent::__construct($formName, $fieldName, $fieldOptions);
 
         $this->em = $em;
-        $this->legacy = $legacy;
     }
 
     /**
@@ -83,41 +73,12 @@ class ContentTypeResolver extends AbstractChoiceOptionResolver
             return $this->choices;
         }
 
-        if ($this->legacy) {
-            return $this->choices = $this->getParameterValuesLegacy();
-        }
-
         $params = isset($this->options['params'])
             ? array_merge($this->getDefaultParameters(), (array) $this->options['params'])
             : $this->getDefaultParameters()
         ;
 
         return $this->choices = $this->getParameterValues($params);
-    }
-
-    /**
-     * Handle legacy parameters.
-     *
-     * @deprecated To be removed in BoltForms v4.
-     *
-     * @return array
-     */
-    private function getParameterValuesLegacy()
-    {
-        $key = $this->options['choices'];
-        $parts = explode('::', $key);
-        if ($parts === false || count($parts) !== 4) {
-            throw new \UnexpectedValueException(sprintf('The configured ContentType choice field "%s" has an invalid key string: "%s"', $this->name, $key));
-        }
-        $params = array_merge($this->getDefaultParameters(),
-            [
-                'contenttype' => $parts[1],
-                'label'       => $parts[2],
-                'value'       => $parts[3],
-            ]
-        );
-
-        return $this->getParameterValues($params);
     }
 
     /**

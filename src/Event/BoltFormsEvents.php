@@ -8,9 +8,9 @@ namespace Bolt\Extension\Bolt\BoltForms\Event;
  * Copyright (c) 2014-2016 Gawain Lynch
  *
  * This program is free software: you can redistribute it and/or modify
- * it under the terms of the GNU General Public License as published by
- * the Free Software Foundation, either version 3 of the License, or
- * (at your option) any later version.
+ * it under the terms of the GNU General Public License or GNU Lesser
+ * General Public License as published by the Free Software Foundation,
+ * either version 3 of the Licenses, or (at your option) any later version.
  *
  * This program is distributed in the hope that it will be useful,
  * but WITHOUT ANY WARRANTY; without even the implied warranty of
@@ -23,6 +23,7 @@ namespace Bolt\Extension\Bolt\BoltForms\Event;
  * @author    Gawain Lynch <gawain.lynch@gmail.com>
  * @copyright Copyright (c) 2014-2016, Gawain Lynch
  * @license   http://opensource.org/licenses/GPL-3.0 GNU Public License 3.0
+ * @license   http://opensource.org/licenses/LGPL-3.0 GNU Lesser General Public License 3.0
  */
 final class BoltFormsEvents
 {
@@ -38,16 +39,23 @@ final class BoltFormsEvents
     /*
      * Events in the data processor
      */
-    const SUBMISSION_PROCESSOR = 'boltforms.submission_processor';
     const SUBMISSION_PRE_PROCESSOR = 'boltforms.submission_pre_processor';
     const SUBMISSION_POST_PROCESSOR = 'boltforms.submission_post_processor';
 
     const SUBMISSION_PROCESS_FIELDS = 'boltforms.submission_process_fields';
+    const SUBMISSION_PROCESS_UPLOADS = 'boltforms.submission_process_uploads';
     const SUBMISSION_PROCESS_CONTENTTYPE = 'boltforms.submission_process_contenttype';
     const SUBMISSION_PROCESS_DATABASE = 'boltforms.submission_process_database';
     const SUBMISSION_PROCESS_EMAIL = 'boltforms.submission_process_email';
     const SUBMISSION_PROCESS_FEEDBACK = 'boltforms.submission_process_feedback';
     const SUBMISSION_PROCESS_REDIRECT = 'boltforms.submission_process_redirect';
+
+    /*
+     * Shortcut priorities for processor event priority
+     */
+    const PRIORITY_EARLY = 128;
+    const PRIORITY_INTERNAL = 0;
+    const PRIORITY_LATE = -128;
 
     /*
      * Custom data events

@@ -4,7 +4,7 @@ namespace Bolt\Extension\Bolt\BoltForms\Config;
 
 use Bolt\Extension\Bolt\BoltForms\Config\Form\FieldOptionsBag;
 use Bolt\Extension\Bolt\BoltForms\Exception\EmailException;
-use Bolt\Extension\Bolt\BoltForms\FormData;
+use Bolt\Storage\Entity;
 use Symfony\Component\HttpFoundation\ParameterBag;
 
 /**
@@ -13,9 +13,9 @@ use Symfony\Component\HttpFoundation\ParameterBag;
  * Copyright (c) 2014-2016 Gawain Lynch
  *
  * This program is free software: you can redistribute it and/or modify
- * it under the terms of the GNU General Public License as published by
- * the Free Software Foundation, either version 3 of the License, or
- * (at your option) any later version.
+ * it under the terms of the GNU General Public License or GNU Lesser
+ * General Public License as published by the Free Software Foundation,
+ * either version 3 of the Licenses, or (at your option) any later version.
  *
  * This program is distributed in the hope that it will be useful,
  * but WITHOUT ANY WARRANTY; without even the implied warranty of
@@ -28,19 +28,21 @@ use Symfony\Component\HttpFoundation\ParameterBag;
  * @author    Gawain Lynch <gawain.lynch@gmail.com>
  * @copyright Copyright (c) 2014-2016, Gawain Lynch
  * @license   http://opensource.org/licenses/GPL-3.0 GNU Public License 3.0
+ * @license   http://opensource.org/licenses/LGPL-3.0 GNU Lesser General Public License 3.0
  */
 class EmailConfig extends ParameterBag
 {
     /** @var boolean */
     protected $debug;
 
-    public function __construct(FormConfig $formConfig, FormData $formData)
+    public function __construct(FormConfig $formConfig, Entity\Entity $formData)
     {
         parent::__construct();
 
         $this->set('attachFiles', $formConfig->getNotification()->get('attach_files', false));
         $this->set('debug', $formConfig->getNotification()->isDebug());
         $this->set('debugEmail', $formConfig->getNotification()->get('debug_address'));
+        $this->set('debugSmtp', $formConfig->getNotification()->get('debug_smtp'));
         $this->setEmailConfig($formConfig, $formData);
     }
 
@@ -52,6 +54,16 @@ class EmailConfig extends ParameterBag
     public function isDebug()
     {
         return $this->getBoolean('debug');
+    }
+
+    /**
+     * Debugging state.
+     *
+     * @return boolean
+     */
+    public function isDebugSmtp()
+    {
+        return $this->getBoolean('debugSmtp');
     }
 
     /**
@@ -282,12 +294,12 @@ class EmailConfig extends ParameterBag
     }
 
     /**
-     * Get resolved email configuration settings.
+     * Set resolved email configuration settings.
      *
-     * @param FormConfig $formConfig
-     * @param FormData   $formData
+     * @param FormConfig    $formConfig
+     * @param Entity\Entity $formData
      */
-    private function setEmailConfig(FormConfig $formConfig, FormData $formData)
+    private function setEmailConfig(FormConfig $formConfig, Entity\Entity $formData)
     {
         $notifyConfig = $formConfig->getNotification();
         $hashMap = [
@@ -304,8 +316,26 @@ class EmailConfig extends ParameterBag
         ];
 
         foreach ($hashMap as $internalName => $keyName) {
-            $value = $this->getConfigValue($formData, $notifyConfig->get($keyName));
-            $this->set($internalName, $value);
+            $key = $notifyConfig->get($keyName);
+
+            // Allow for both `replyto_email: email` as well as `from_name: [name, lastname]`
+            if (is_array($key)) {
+                $value = [];
+                foreach($key as $keyPart) {
+                    if ($this->getConfigValue($formData, $keyPart) != $keyPart) {
+                        $value[] = $this->getConfigValue($formData, $keyPart);
+                    }
+                }
+                $value = implode(" ", $value);
+            } else {
+                $value = $this->getConfigValue($formData, $key);
+            }
+
+            if ($value === null) {
+                $this->set($internalName, $key);
+            } else {
+                $this->set($internalName, $value);
+            }
         }
     }
 
@@ -315,12 +345,12 @@ class EmailConfig extends ParameterBag
      * If the form notification configuration wants a value to be returned from
      * a submitted field we use this, otherwise the configured parameter.
      *
-     * @param FormData $formData
-     * @param string   $value
+     * @param Entity\Entity $formData
+     * @param string        $value
      *
      * @return string
      */
-    private function getConfigValue(FormData $formData, $value)
+    private function getConfigValue(Entity\Entity $formData, $value)
     {
         if ($value instanceof FieldOptionsBag) {
             $parts = [];
@@ -330,7 +360,7 @@ class EmailConfig extends ParameterBag
 
             return implode(' ', $parts);
         }
-        if (is_string($value) && $formData->has($value)) {
+        if (is_string($value) && isset($formData[$value])) {
             return $formData->get($value);
         }
 

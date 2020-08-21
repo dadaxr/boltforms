@@ -35,7 +35,7 @@ csrf: true
 #templates:
 #    form: extensions/boltforms/form.twig
 #    email: extensions/boltforms/email.twig
-#    subject: extensions/boltforms/_subject.twig
+#    subject: extensions/boltforms/subject.twig
 #    files: extensions/boltforms/file_browser.twig
 
 ## reCAPTCHa set up
@@ -99,6 +99,8 @@ contact:
     notification:
         enabled: true
         debug: false
+        debug_address: name@example.com # Email address used when debug mode is enabled
+        debug_smtp: true
         subject: Your message was submitted
         from_name: name                 # Email addresses and names can be either the
         from_email: email               # name of a field below or valid text.
@@ -106,7 +108,6 @@ contact:
         replyto_name: name              # NOTE: Email addresses must be valid
         to_name: My Site                #
         to_email: noreply@example.com   #
-        debug_address: name@example.com # Email address used when debug mode is enabled
     feedback:
         success: Message submission successful
         error: There are errors in the form, please fix before trying to resubmit
@@ -145,7 +146,7 @@ contact:
         submit:
             type: submit
             options:
-                label: Submit my message &raquo;
+                label: Submit my message »
                 attr:
                     class: button primary
 
@@ -158,6 +159,8 @@ contact:
 #    notification:
 #        enabled: true
 #        debug: false
+#        debug_address: name@example.com # Email address used when debug mode is enabled
+#        debug_smtp: true
 #        subject: "[TESTING] A showcase form was just submitted"
 #        from_name: name               # A field name, specified in the fields: section below
 #        replyto_email: email          # A field name, specified in the fields: section below
@@ -173,7 +176,7 @@ contact:
 #    templates:                      # Over ride the global Twig templates for this form
 #        form: extensions/boltforms/form.twig
 #        email: extensions/boltforms/email.twig
-#        subject: extensions/boltforms/_subject.twig
+#        subject: extensions/boltforms/subject.twig
 #        files: extensions/boltforms/file_browser.twig
 #    feedback:
 #        success: Form submission sucessful
@@ -182,10 +185,15 @@ contact:
 #            target: page/another-page  # A page path, or URL
 #            query: [ name, email ]     # Optional keys for the GET parameters
 #    database:
-#        contenttype: mycontenttype  # ContentType record to create
+#        contenttype:
+#           name: mycontenttype  # ContentType record to create
+#           field_map:
+#               email: ~                # Do not try to save this field to the ContentType
+#               message: 'sent_message' # Form field "message" will be saved to the ContentType field "sent_message"
 #        table: bolt_secret_table    # Specific database table to write to
 #    uploads:
 #        subdirectory: showcase_files # The (optional) subdirectory for uploaded files
+#    recaptcha: false    # This setting is optional to use the overall default, false is the only valid value to disable for this form only.
 #    fields:
 #        subject:
 #            type: text
@@ -194,6 +202,8 @@ contact:
 #                label: Subject of your message
 #                attr:
 #                    placeholder: Just a quick message...
+#                    prefix: '<p>A small HTML prefix</p>'
+#                    postfix: '<p>A small HTML postfix</p>'
 #                constraints: [ NotBlank, {Length: {'min': 3, 'max': 30}} ]
 #        name:
 #            type: text
@@ -322,6 +332,6 @@ contact:
 #        submit:
 #            type: submit
 #            options:
-#                label: Submit my message &raquo;
+#                label: Submit my message »
 #                attr:
 #                    class: button primary

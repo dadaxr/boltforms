@@ -7,9 +7,9 @@ use Bolt\Extension\Bolt\BoltForms\Config;
 use Bolt\Extension\Bolt\BoltForms\Exception\FileUploadException;
 use Bolt\Extension\Bolt\BoltForms\Exception\FormValidationException;
 use Bolt\Extension\Bolt\BoltForms\Factory\FormContext;
+use Bolt\Extension\Bolt\BoltForms\Form\Type\BoltFormType;
 use Silex\Application;
 use Silex\ControllerProviderInterface;
-use Symfony\Component\Form\Extension\Core\Type\FormType;
 use Symfony\Component\HttpFoundation\JsonResponse;
 use Symfony\Component\HttpFoundation\Request;
 use Symfony\Component\HttpFoundation\Response;
@@ -20,9 +20,9 @@ use Symfony\Component\HttpFoundation\Response;
  * Copyright (c) 2014-2016 Gawain Lynch
  *
  * This program is free software: you can redistribute it and/or modify
- * it under the terms of the GNU General Public License as published by
- * the Free Software Foundation, either version 3 of the License, or
- * (at your option) any later version.
+ * it under the terms of the GNU General Public License or GNU Lesser
+ * General Public License as published by the Free Software Foundation,
+ * either version 3 of the Licenses, or (at your option) any later version.
  *
  * This program is distributed in the hope that it will be useful,
  * but WITHOUT ANY WARRANTY; without even the implied warranty of
@@ -34,6 +34,8 @@ use Symfony\Component\HttpFoundation\Response;
  *
  * @author    Gawain Lynch <gawain.lynch@gmail.com>
  * @copyright Copyright (c) 2014-2016, Gawain Lynch
+ * @license   http://opensource.org/licenses/GPL-3.0 GNU Public License 3.0
+ * @license   http://opensource.org/licenses/LGPL-3.0 GNU Lesser General Public License 3.0
  */
 class Async implements ControllerProviderInterface
 {
@@ -77,7 +79,7 @@ class Async implements ControllerProviderInterface
         /** @var BoltForms $boltForms */
         $boltForms = $app['boltforms'];
         $boltForms
-            ->create($formName, FormType::class, [], [])
+            ->create($formName, BoltFormType::class, [], [])
             ->setMeta($meta)
         ;
         /** @var Config\Config $config */
@@ -86,22 +88,26 @@ class Async implements ControllerProviderInterface
         $formConfig = $config->getForm($formName);
 
         try {
-            $sent = $app['boltforms.processor']->process($formConfig, $app['recapture.response.factory']());
+            $result = $app['boltforms.processor']->process($formConfig, $app['recapture.response.factory']());
+            $formContext->setResult($result);
         } catch (FileUploadException $e) {
-            $sent = false;
             $app['boltforms.feedback']->add('error', $e->getMessage());
             $app['logger.system']->debug($e->getSystemMessage(), ['event' => 'extensions']);
         } catch (FormValidationException $e) {
-            $sent = false;
             $app['boltforms.feedback']->add('error', $e->getMessage());
             $app['logger.system']->debug('[BoltForms] Form validation exception: ' . $e->getMessage(), ['event' => 'extensions']);
         }
 
-        $formContext->setSent($sent);
         $context = $formContext->build($boltForms, $config, $formName, $app['boltforms.feedback']);
         $template = $config->getForm($formName)->getTemplates()->getForm();
 
         // Render the Twig_Markup
-        return $boltForms->render($formName, $template, $context, false);
+        $output = $boltForms->render($formName, $template, $context, false);
+
+        // Because this handles the response via ajax, we don't want the feedback to persist over another request so
+        // we clear it here after the ajax response has been rendered.
+        $app['boltforms.feedback']->clear();
+
+        return $output;
     }
 }

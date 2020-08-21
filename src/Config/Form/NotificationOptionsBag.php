@@ -3,6 +3,7 @@
 namespace Bolt\Extension\Bolt\BoltForms\Config\Form;
 
 use Bolt\Extension\Bolt\BoltForms\Config\AbstractCascadingBag;
+use Bolt\Extension\Bolt\BoltForms\Config\Config;
 use Symfony\Component\HttpFoundation\ParameterBag;
 
 /**
@@ -11,9 +12,9 @@ use Symfony\Component\HttpFoundation\ParameterBag;
  * Copyright (c) 2014-2016 Gawain Lynch
  *
  * This program is free software: you can redistribute it and/or modify
- * it under the terms of the GNU General Public License as published by
- * the Free Software Foundation, either version 3 of the License, or
- * (at your option) any later version.
+ * it under the terms of the GNU General Public License or GNU Lesser
+ * General Public License as published by the Free Software Foundation,
+ * either version 3 of the Licenses, or (at your option) any later version.
  *
  * This program is distributed in the hope that it will be useful,
  * but WITHOUT ANY WARRANTY; without even the implied warranty of
@@ -26,9 +27,25 @@ use Symfony\Component\HttpFoundation\ParameterBag;
  * @author    Gawain Lynch <gawain.lynch@gmail.com>
  * @copyright Copyright (c) 2014-2016, Gawain Lynch
  * @license   http://opensource.org/licenses/GPL-3.0 GNU Public License 3.0
+ * @license   http://opensource.org/licenses/LGPL-3.0 GNU Lesser General Public License 3.0
  */
 class NotificationOptionsBag extends AbstractCascadingBag
 {
+    /**
+     * Constructor.
+     *
+     * @param array  $parameters
+     * @param Config $rootConfig
+     */
+    public function __construct(array $parameters = [], Config $rootConfig)
+    {
+        parent::__construct($parameters, $rootConfig);
+        if ($rootConfig->isDebug()) {
+            $this->set('debug', true);
+            $this->set('debug_address', $rootConfig->getDebugAddress());
+        }
+    }
+
     /**
      * @return boolean
      */
@@ -65,6 +82,26 @@ class NotificationOptionsBag extends AbstractCascadingBag
     public function setDebug($debug)
     {
         $this->set('debug', $debug);
+
+        return $this;
+    }
+
+    /**
+     * @return boolean
+     */
+    public function isDebugSmtp()
+    {
+        return  $this->getHierarchicalValue('debug_smtp');
+    }
+
+    /**
+     * @param boolean $debug
+     *
+     * @return NotificationOptionsBag
+     */
+    public function setDebugSmtp($debug)
+    {
+        $this->set('debug_smtp', $debug);
 
         return $this;
     }

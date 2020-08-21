@@ -14,9 +14,9 @@ use Symfony\Component\HttpFoundation\ParameterBag;
  * Copyright (c) 2014-2016 Gawain Lynch
  *
  * This program is free software: you can redistribute it and/or modify
- * it under the terms of the GNU General Public License as published by
- * the Free Software Foundation, either version 3 of the License, or
- * (at your option) any later version.
+ * it under the terms of the GNU General Public License or GNU Lesser
+ * General Public License as published by the Free Software Foundation,
+ * either version 3 of the Licenses, or (at your option) any later version.
  *
  * This program is distributed in the hope that it will be useful,
  * but WITHOUT ANY WARRANTY; without even the implied warranty of
@@ -29,13 +29,10 @@ use Symfony\Component\HttpFoundation\ParameterBag;
  * @author    Gawain Lynch <gawain.lynch@gmail.com>
  * @copyright Copyright (c) 2014-2016, Gawain Lynch
  * @license   http://opensource.org/licenses/GPL-3.0 GNU Public License 3.0
+ * @license   http://opensource.org/licenses/LGPL-3.0 GNU Lesser General Public License 3.0
  */
 class FieldOptionsResolver extends ParameterBag
 {
-    /** @var string */
-    private $formName;
-    /** @var string */
-    private $fieldName;
     /** @var string */
     private $type;
     /** @var array */
@@ -44,19 +41,15 @@ class FieldOptionsResolver extends ParameterBag
     /**
      * Constructor.
      *
-     * @param string $formName
-     * @param string $fieldName
      * @param string $type
-     * @param array  $baseOptions
+     * @param array  $parameters
      */
-    public function __construct($formName, $fieldName, $type, array $baseOptions)
+    public function __construct($type, array $parameters)
     {
         parent::__construct();
 
-        $this->formName = $formName;
-        $this->fieldName = $fieldName;
         $this->type = $type;
-        $this->baseOptions = $baseOptions;
+        $this->baseOptions = $parameters;
     }
 
     /**
@@ -76,11 +69,14 @@ class FieldOptionsResolver extends ParameterBag
 
     /**
      * Set a clean array of options to be passed to Symfony Forms.
+     *
+     * @param EntityManager            $storage
+     * @param EventDispatcherInterface $dispatcher
      */
     protected function initialise(EntityManager $storage, EventDispatcherInterface $dispatcher)
     {
         $options = (array) $this->baseOptions;
-        if ($this->get('type') === 'choice') {
+        if ($this->type === 'choice') {
             $options = $this->resolveChoiceOptions($options, $storage, $dispatcher);
         }
 
@@ -121,7 +117,7 @@ class FieldOptionsResolver extends ParameterBag
             'preferred_choices' => $choiceObj->getPreferredChoices(),
         ];
 
-        $this->options = array_merge($options, $choiceOptions);
+        $options = array_merge($options, $choiceOptions);
 
         unset($options['params']);
 
@@ -138,11 +134,6 @@ class FieldOptionsResolver extends ParameterBag
     protected function handleCustomChoice($choices, EntityManager $storage, EventDispatcherInterface $dispatcher)
     {
         // Check if it is one of our custom types
-        if (strpos($choices, 'contenttype::') === 0) {
-            // @deprecated Will be remove in BoltForms v4
-            return new Choice\ContentTypeResolver($this->get('formName'), $this->get('fieldName'), $this->baseOptions, $storage, true);
-        }
-
         if (strpos($choices, 'content') === 0) {
             return new Choice\ContentTypeResolver($this->get('formName'), $this->get('fieldName'), $this->baseOptions, $storage);
         }

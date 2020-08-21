@@ -7,12 +7,8 @@ use Bolt\Extension\Bolt\BoltForms\Config\Form\FieldOptionsBag;
 use Bolt\Extension\Bolt\BoltForms\Event\CustomDataEvent;
 use Bolt\Extension\Bolt\BoltForms\Event\LifecycleEvent;
 use Bolt\Extension\Bolt\BoltForms\Exception\FileUploadException;
-use Bolt\Extension\Bolt\BoltForms\Submission\Handler\Upload;
-use Bolt\Extension\Bolt\BoltForms\Submission\Processor;
 use Pimple as Container;
-use Psr\Log\LogLevel;
 use Symfony\Component\EventDispatcher\EventDispatcherInterface;
-use Symfony\Component\HttpFoundation\File\UploadedFile;
 
 /**
  * Submission processor file value processing.
@@ -20,9 +16,9 @@ use Symfony\Component\HttpFoundation\File\UploadedFile;
  * Copyright (c) 2014-2016 Gawain Lynch
  *
  * This program is free software: you can redistribute it and/or modify
- * it under the terms of the GNU General Public License as published by
- * the Free Software Foundation, either version 3 of the License, or
- * (at your option) any later version.
+ * it under the terms of the GNU General Public License or GNU Lesser
+ * General Public License as published by the Free Software Foundation,
+ * either version 3 of the Licenses, or (at your option) any later version.
  *
  * This program is distributed in the hope that it will be useful,
  * but WITHOUT ANY WARRANTY; without even the implied warranty of
@@ -35,6 +31,7 @@ use Symfony\Component\HttpFoundation\File\UploadedFile;
  * @author    Gawain Lynch <gawain.lynch@gmail.com>
  * @copyright Copyright (c) 2014-2016, Gawain Lynch
  * @license   http://opensource.org/licenses/GPL-3.0 GNU Public License 3.0
+ * @license   http://opensource.org/licenses/LGPL-3.0 GNU Lesser General Public License 3.0
  */
 class Fields extends AbstractProcessor
 {
@@ -65,51 +62,24 @@ class Fields extends AbstractProcessor
         $formConfig = $lifeEvent->getFormConfig();
         $formData = $lifeEvent->getFormData();
 
-        foreach ($formData->keys() as $fieldName) {
-            $field = $formData->get($fieldName);
+        foreach ($formConfig->getFields() as $fieldName => $fieldConf) {
+            /** @var \Bolt\Extension\Bolt\BoltForms\Config\Form\FieldBag $fieldConf */
+            if ($fieldConf === null) {
+                continue;
+            }
 
-            // Handle file uploads
-            if ($field instanceof UploadedFile) {
-                $this->processFieldFile($fieldName, $lifeEvent, $field);
+            /** @var \Bolt\Extension\Bolt\BoltForms\Config\Form\FieldOptionsBag $fieldOptions */
+            if ($fieldConf->has('event') === false) {
+                continue;
             }
 
             // Handle events for custom data
-            $fieldConf = $formConfig->getFields()->get($fieldName);
-            if ($fieldConf->getOptions()->has('event') && $fieldConf->getOptions()->get('event')->has('name')) {
-                $formData->set($fieldName, $this->dispatchCustomDataEvent($dispatcher, $fieldConf->getOptions()->get('event')));
+            $eventConfig = $fieldConf->get('event');
+            if ($eventConfig->has('name')) {
+                $data = $this->dispatchCustomDataEvent($dispatcher, $eventConfig);
+                $formData->set($fieldName, $data);
             }
         }
-    }
-
-    /**
-     * @param string         $fieldName
-     * @param LifecycleEvent $lifeEvent
-     * @param UploadedFile   $field
-     *
-     * @throws FileUploadException
-     */
-    protected function processFieldFile($fieldName, LifecycleEvent $lifeEvent, UploadedFile $field)
-    {
-        if (!$field->isValid()) {
-            throw new FileUploadException($field->getErrorMessage(), $field->getErrorMessage(), 0, null, false);
-        }
-
-        $formConfig = $lifeEvent->getFormConfig();
-        $formData = $lifeEvent->getFormData();
-
-        // Get the upload object
-        /** @var Upload $fileHandler */
-        $fileHandler = $this->handlers['upload']($formConfig, $field);
-        $formData->set($fieldName, $fileHandler);
-
-        if (!$this->config->getUploads()->get('enabled')) {
-            $this->message('File upload skipped as the administrator has disabled uploads for all forms.',  Processor::FEEDBACK_DEBUG, LogLevel::ERROR);
-
-            return;
-        }
-
-        $fileHandler->move();
-        $this->message(sprintf('Moving uploaded file to %s', $fileHandler->fullPath()),  Processor::FEEDBACK_DEBUG, LogLevel::DEBUG);
     }
 
     /**

@@ -5,17 +5,16 @@ use Bolt\Asset\Snippet\Snippet;
 use Bolt\Asset\Target;
 use Bolt\Controller\Zone;
 use Bolt\Extension\Bolt\BoltForms\Asset\ReCaptcha;
-use Bolt\Extension\Bolt\BoltForms\Config\Form\FieldOptionsBag;
 use Bolt\Extension\Bolt\BoltForms\Config\FormConfig;
 use Bolt\Extension\Bolt\BoltForms\Exception\FormOptionException;
-use Bolt\Extension\Bolt\BoltForms\Exception\InvalidConstraintException;
-use Bolt\Extension\Bolt\BoltForms\Subscriber\BoltFormsSubscriber;
+use Bolt\Extension\Bolt\BoltForms\Form\DataTransformer\EntityTransformer;
+use Bolt\Extension\Bolt\BoltForms\Form\ResolvedBoltForm;
+use Bolt\Extension\Bolt\BoltForms\Form\Type\BoltFormType;
+use Bolt\Extension\Bolt\BoltForms\Subscriber\SymfonyFormProxySubscriber;
 use Silex\Application;
-use Symfony\Component\Form\Extension\Core\Type\FormType;
 use Symfony\Component\Form\Form;
 use Symfony\Component\Form\FormBuilderInterface;
 use Symfony\Component\Form\FormTypeInterface;
-use Symfony\Component\HttpFoundation\ParameterBag;
 use Symfony\Component\HttpFoundation\Request;
 
 /**
@@ -24,9 +23,9 @@ use Symfony\Component\HttpFoundation\Request;
  * Copyright (c) 2014-2016 Gawain Lynch
  *
  * This program is free software: you can redistribute it and/or modify
- * it under the terms of the GNU General Public License as published by
- * the Free Software Foundation, either version 3 of the License, or
- * (at your option) any later version.
+ * it under the terms of the GNU General Public License or GNU Lesser
+ * General Public License as published by the Free Software Foundation,
+ * either version 3 of the Licenses, or (at your option) any later version.
  *
  * This program is distributed in the hope that it will be useful,
  * but WITHOUT ANY WARRANTY; without even the implied warranty of
@@ -39,6 +38,7 @@ use Symfony\Component\HttpFoundation\Request;
  * @author    Gawain Lynch <gawain.lynch@gmail.com>
  * @copyright Copyright (c) 2014-2016, Gawain Lynch
  * @license   http://opensource.org/licenses/GPL-3.0 GNU Public License 3.0
+ * @license   http://opensource.org/licenses/LGPL-3.0 GNU Lesser General Public License 3.0
  */
 class BoltForms
 {
@@ -46,9 +46,9 @@ class BoltForms
 
     /** @var Application */
     private $app;
-    /** @var ParameterBag */
+    /** @var Config\Config */
     private $config;
-    /** @var BoltForm[] */
+    /** @var ResolvedBoltForm[] */
     private $forms;
     /** @var boolean */
     private $queuedAjax;
@@ -103,85 +103,52 @@ class BoltForms
      *
      * @throws FormOptionException
      *
-     * @return BoltForm
+     * @return ResolvedBoltForm
      */
-    public function create($formName, $type = FormType::class, $data = null, $options = [])
+    public function create($formName, $type = BoltFormType::class, $data = null, $options = [])
     {
         if (isset($this->forms[$formName])) {
             throw new \RuntimeException(sprintf('A form of the name "%s" has already been created.', $formName));
         }
 
-        $options['csrf_protection'] = $this->config->isCsrf();
-
-        /** @var FormBuilderInterface $builder */
-        $builder = $this->app['form.factory']
-            ->createNamedBuilder($formName, $type, $data, $options)
-            ->addEventSubscriber(new BoltFormsSubscriber($this->app))
-        ;
-        /** @var Form $form */
-        $form = $builder->getForm();
-
         $this->resolveFormConfiguration($formName);
 
+        /** @var FormBuilderInterface $builder */
+        $builder = $this->createFormBuilder($formName, $type, $data, $options);
         /** @var Config\FormConfig $formConfig */
         $formConfig = $this->config->getForm($formName);
+        foreach ($formConfig->getFields()->all() as $key => $field) {
+            $builder->add($key, $this->getTypeClassName($field['type']), $field['options']);
+        }
+
+        /** @var Form $form */
+        $form = $builder->getForm();
         $formMeta = new Config\MetaData();
-        $this->forms[$formName] = new BoltForm($form, $formConfig, $formMeta);
+        $this->forms[$formName] = new ResolvedBoltForm($form, $formConfig, $formMeta);
 
         if ($formConfig->getSubmission()->isAjax()) {
             $request = $this->app['request_stack']->getCurrentRequest();
             $request->attributes->set(static::META_FIELD_NAME, [$formName => $formMeta->getMetaId()]);
         }
 
-        foreach ($formConfig->getFields()->all() as $key => $field) {
-            $field['options'] = !empty($field['options']) ? $field['options'] : [];
-
-            if (!isset($field['type'])) {
-                throw new FormOptionException(sprintf('Missing "type" value for "%s" field in "%s" form.', $key, $formName));
-            }
-
-            $this->addField($formName, $key, $field['type'], $field['options']);
-        }
-
         return $this->forms[$formName];
     }
 
     /**
-     * @deprecated Since 3.1 and to be removed in 4.0. Use create() instead.
-     * @see self::create()
-     */
-    public function makeForm($formName, $type = FormType::class, $data = null, $options = [])
-    {
-        $this->create($formName, $type, $data, $options);
-    }
-
-    /**
-     * Add a field to the form.
+     * Return the FQCN of the Symfony Form type, or just the string if not found.
      *
-     * @param string                $formName  Name of the form
-     * @param string                $fieldName
-     * @param string                $type
-     * @param array|FieldOptionsBag $options
+     * @param string $type
      *
-     * @throws FormOptionException
+     * @return string
      */
-    public function addField($formName, $fieldName, $type, $options)
+    private function getTypeClassName($type)
     {
-        if (is_array($options)) {
-            $options = new FieldOptionsBag($options);
-        }
-        if (!$options instanceof ParameterBag) {
-            throw new FormOptionException(sprintf('Options passed to %s must of of type array or %s', __METHOD__, ParameterBag::class));
+        $className = 'Symfony\\Component\\Form\\Extension\\Core\\Type\\' . ucwords($type) . 'Type';
+        if (class_exists($className)) {
+            return $className;
         }
 
-        try {
-            $this->get($formName)
-                ->getForm()
-                ->add($fieldName, $type, $options->all())
-            ;
-        } catch (InvalidConstraintException $e) {
-            $this->app['logger.system']->error($e->getMessage(), ['event' => 'extensions']);
-        }
+        return $type;
     }
 
     /**
@@ -189,7 +156,7 @@ class BoltForms
      *
      * @param string $formName
      *
-     * @return BoltForm
+     * @return ResolvedBoltForm
      */
     public function get($formName)
     {
@@ -198,14 +165,6 @@ class BoltForms
         }
 
         throw new Exception\UnknownFormException(sprintf('Unknown form requested: %s', $formName));
-    }
-
-    /**
-     * @deprecated Deprecated since 3.1, to be removed in 4.0.
-     */
-    public function getForm($formName)
-    {
-        return $this->get($formName)->getForm();
     }
 
     /**
@@ -234,22 +193,6 @@ class BoltForms
             return;
         }
         $this->forms[$formName]->setMeta($meta);
-    }
-
-    /**
-     * Add an array of fields to the form.
-     *
-     * @param string $formName Name of the form
-     * @param array  $fields   Associative array keyed on field name => array('type' => '', 'options => array())
-     *
-     * @return void
-     */
-    public function addFieldArray($formName, array $fields)
-    {
-        foreach ($fields as $fieldName => $field) {
-            $field['options'] = empty($field['options']) ? [] : $field['options'];
-            $this->addField($formName, $fieldName, $field['type'], $field['options']);
-        }
     }
 
     /**
@@ -294,14 +237,6 @@ class BoltForms
     }
 
     /**
-     * @deprecated use render()
-     */
-    public function renderForm($formName, $template = '', array $context = [], $loadAjax = false)
-    {
-        return $this->render($formName, $template, $context, $loadAjax);
-    }
-
-    /**
      * Conditionally add form handling JavaScript to the end of the HTML body.
      *
      * @param array $context
@@ -338,6 +273,7 @@ class BoltForms
         $reCaptcha = new ReCaptcha();
         $reCaptcha
             ->setHtmlLang($this->app['locale'])
+            ->setRenderType($this->config->getReCaptcha()->get('type'))
             ->setLocation(Target::END_OF_BODY)
             ->setZone(Zone::FRONTEND)
         ;
@@ -360,7 +296,6 @@ class BoltForms
         }
 
         $formConfig = $this->config->getForms()->get($formName)->all();
-
         if (!isset($formConfig['fields'])) {
             throw new Exception\FormOptionException(sprintf('[BoltForms] Form "%s" does not have any fields defined!', $formName));
         }
@@ -370,13 +305,32 @@ class BoltForms
 
         foreach ($formConfig['fields'] as $fieldName => $data) {
             $this->config->assetValidField($formName, $fieldName, $data);
-
-            $options = !empty($data['options']) ? $data['options'] : [];
-
-            $formConfig['fields'][$fieldName]['options'] = $resolverFactory($formName, $fieldName, $data['type'], $options);
+            $formConfig['fields'][$fieldName]['options'] = $resolverFactory(
+                $data['type'],
+                isset($data['options']) ? (array) $data['options'] : []
+            );
         }
 
-        $resolvedFormConfig = new FormConfig($formName, $formConfig, $this->app['boltforms.config']);
+        $resolvedFormConfig = new FormConfig($formName, $formConfig, $this->config);
         $this->config->setResolvedFormConfig($formName, $resolvedFormConfig);
+    }
+
+    /**
+     * Returns a named form builder.
+     *
+     * @param string $formName
+     * @param string $type
+     * @param mixed  $data
+     * @param array  $options
+     *
+     * @return FormBuilderInterface
+     */
+    private function createFormBuilder($formName, $type = BoltFormType::class, $data = null, array $options = [])
+    {
+        return $this->app['form.factory']
+            ->createNamedBuilder($formName, $type, $data, $options)
+            ->addEventSubscriber(new SymfonyFormProxySubscriber($this->app))
+            ->addModelTransformer(new EntityTransformer())
+        ;
     }
 }

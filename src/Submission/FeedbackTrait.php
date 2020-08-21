@@ -12,9 +12,9 @@ use Symfony\Component\HttpFoundation\Session\Flash\FlashBag;
  * Copyright (c) 2014-2016 Gawain Lynch
  *
  * This program is free software: you can redistribute it and/or modify
- * it under the terms of the GNU General Public License as published by
- * the Free Software Foundation, either version 3 of the License, or
- * (at your option) any later version.
+ * it under the terms of the GNU General Public License or GNU Lesser
+ * General Public License as published by the Free Software Foundation,
+ * either version 3 of the Licenses, or (at your option) any later version.
  *
  * This program is distributed in the hope that it will be useful,
  * but WITHOUT ANY WARRANTY; without even the implied warranty of
@@ -27,6 +27,7 @@ use Symfony\Component\HttpFoundation\Session\Flash\FlashBag;
  * @author    Gawain Lynch <gawain.lynch@gmail.com>
  * @copyright Copyright (c) 2014-2016, Gawain Lynch
  * @license   http://opensource.org/licenses/GPL-3.0 GNU Public License 3.0
+ * @license   http://opensource.org/licenses/LGPL-3.0 GNU Lesser General Public License 3.0
  */
 trait FeedbackTrait
 {
@@ -52,7 +53,7 @@ trait FeedbackTrait
      *
      * @throws \Exception
      */
-    protected function exception(\Exception $e, $rethrow = true, $messagePrefix = 'An exception has occured during form processing:')
+    protected function exception(\Exception $e, $rethrow = true, $messagePrefix = 'An exception has occurred during form processing:')
     {
         $message = sprintf('%s%s%s', $messagePrefix, "\n", $e->getMessage());
         $this->getFeedback()->add('debug', $message);
@@ -76,11 +77,4 @@ trait FeedbackTrait
      * @return LoggerInterface
      */
     abstract protected function getLogger();
-
-    /**
-     * Return the SMTP mailer service.
-     *
-     * @return \Swift_Mailer
-     */
-    abstract protected function getMailer();
 }

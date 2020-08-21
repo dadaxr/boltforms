@@ -3,7 +3,10 @@
  #   formname        — The form name
  #   form            — The form object
  #   fields          — Field data
- #   sent            — True when the form has been submitted successfully
+ #   result
+ #     email         — True when the form has been submitted successfully
+ #     contenttype   — True when saving of ContentType was successful
+ #     uploads       — True when file uploads were a success
  #   html_pre        — HTML to display before successful submission
  #   html_post       — HTML to display after successful submission
  #   messages        — Arrays of messages by type
@@ -32,7 +35,7 @@
         {{ include(templates.messages) }}
         {% import templates.recaptcha as spambot %}
 
-        {% if sent %}
+        {% if result.pass('email') %}
             {# If the form is successfully submitted, this block will be displayed #}
             {{ html_post }}
         {% else %}
@@ -45,22 +48,48 @@
             {% block boltforms_form_fields %}
                 {% for key, value in fields  %}
                     {% if value.config.type.name != 'submit' %}
+                        {% if form[key].vars.attr.prefix is defined %}
+                            {{ form[key].vars.attr.prefix|raw }}
+                        {% endif %}
                         <div class="boltforms-row{% if form[key].vars.attr.class is defined %} boltforms-{{ form[key].vars.attr.class }}-row{% endif %}">
                             <span class="boltforms-label">{{ form_label(form[key]) }}</span>
                             <span class="boltforms-error">{{ form_errors(form[key]) }}</span>
                             <span class="boltforms-value">{{ form_widget(form[key]) }}</span>
                         </div>
+                        {% if form[key].vars.attr.postfix is defined %}
+                            {{ form[key].vars.attr.postfix|raw }}
+                        {% endif %}
                     {% endif %}
                 {% endfor %}
 
                 {{ spambot.recaptcha(recaptcha) }}
 
-                <br>
                 {% for key, value in fields  %}
                     {% if value.config.type.name == 'submit' %}
+                        {% if form[key].vars.attr.prefix is defined %}
+                            {{ form[key].vars.attr.prefix|raw }}
+                        {% endif %}
                         <div class="boltforms-row{% if form[key].vars.attr.class is defined %} boltforms-{{ form[key].vars.attr.class }}-row{% endif %}">
-                            {{ form_widget(form[key]) }}
+                            {% if recaptcha.type == 'invisible' and recaptcha.enabled %}
+                                {{ form_widget(
+                                form[key],
+                                {
+                                    attr:
+                                    {
+                                        'class': form[key].vars.attr.class ~ ' g-recaptcha-button',
+                                        'data-sitekey': recaptcha.public_key,
+                                        'data-size': 'invisible',
+                                        'data-badge': recaptcha.badge_location
+                                    }
+                                }
+                                ) }}
+                            {% else %}
+                                {{ form_widget(form[key]) }}
+                            {% endif %}
                         </div>
+                        {% if form[key].vars.attr.postfix is defined %}
+                            {{ form[key].vars.attr.postfix|raw }}
+                        {% endif %}
                     {% endif %}
                 {% endfor %}
             {% endblock boltforms_form_fields %}
@@ -76,3 +105,6 @@
     </div>
 {% endblock boltforms_form %}
 
+{% block boltforms_js %}
+    {{ include(templates.js) }}
+{% endblock boltforms_js %}

@@ -3,23 +3,22 @@
 namespace Bolt\Extension\Bolt\BoltForms\Submission;
 
 use Bolt\Extension\Bolt\BoltForms\BoltForms;
+use Bolt\Extension\Bolt\BoltForms\Config\Config;
 use Bolt\Extension\Bolt\BoltForms\Config\FormConfig;
 use Bolt\Extension\Bolt\BoltForms\Event\BoltFormsEvents;
 use Bolt\Extension\Bolt\BoltForms\Event\LifecycleEvent;
 use Bolt\Extension\Bolt\BoltForms\Event\ProcessorEvent;
-use Bolt\Extension\Bolt\BoltForms\Exception\FileUploadException;
+use Bolt\Extension\Bolt\BoltForms\Exception\FormOptionException;
 use Bolt\Extension\Bolt\BoltForms\Exception\FormValidationException;
-use Bolt\Extension\Bolt\BoltForms\Exception\InternalProcessorException;
-use Bolt\Extension\Bolt\BoltForms\FormData;
 use Bolt\Extension\Bolt\BoltForms\Submission\Processor\ProcessorInterface;
+use Bolt\Storage\Entity;
+use Exception;
 use Pimple as Container;
 use Psr\Log\LoggerInterface;
-use Psr\Log\LogLevel;
-use Silex\Application;
 use Symfony\Component\EventDispatcher;
 use Symfony\Component\EventDispatcher\EventDispatcherInterface;
-use Symfony\Component\EventDispatcher\EventSubscriberInterface;
 use Symfony\Component\Form\Form;
+use Symfony\Component\HttpFoundation\Session\Flash\FlashBagInterface;
 use Symfony\Component\HttpKernel\Exception\HttpException;
 
 /**
@@ -28,9 +27,9 @@ use Symfony\Component\HttpKernel\Exception\HttpException;
  * Copyright (c) 2014-2016 Gawain Lynch
  *
  * This program is free software: you can redistribute it and/or modify
- * it under the terms of the GNU General Public License as published by
- * the Free Software Foundation, either version 3 of the License, or
- * (at your option) any later version.
+ * it under the terms of the GNU General Public License or GNU Lesser
+ * General Public License as published by the Free Software Foundation,
+ * either version 3 of the Licenses, or (at your option) any later version.
  *
  * This program is distributed in the hope that it will be useful,
  * but WITHOUT ANY WARRANTY; without even the implied warranty of
@@ -43,8 +42,9 @@ use Symfony\Component\HttpKernel\Exception\HttpException;
  * @author    Gawain Lynch <gawain.lynch@gmail.com>
  * @copyright Copyright (c) 2014-2016, Gawain Lynch
  * @license   http://opensource.org/licenses/GPL-3.0 GNU Public License 3.0
+ * @license   http://opensource.org/licenses/LGPL-3.0 GNU Lesser General Public License 3.0
  */
-class Processor implements EventSubscriberInterface
+class Processor
 {
     use FeedbackTrait;
 
@@ -62,50 +62,56 @@ class Processor implements EventSubscriberInterface
     private $dispatcher;
     /** @var LoggerInterface */
     private $loggerSystem;
+    /** @var FlashBagInterface */
+    private $feedback;
+    /** @var Config */
+    private $config;
+    /** @var Result */
+    private $result;
+    /** @var bool */
+    private $debug;
 
-    /** @var Application */
-    private $app;
+    private static $eventMap = [
+        'fields'   => BoltFormsEvents::SUBMISSION_PROCESS_FIELDS,
+        'uploads'  => BoltFormsEvents::SUBMISSION_PROCESS_UPLOADS,
+        'content'  => BoltFormsEvents::SUBMISSION_PROCESS_CONTENTTYPE,
+        'database' => BoltFormsEvents::SUBMISSION_PROCESS_DATABASE,
+        'email'    => BoltFormsEvents::SUBMISSION_PROCESS_EMAIL,
+        'feedback' => BoltFormsEvents::SUBMISSION_PROCESS_FEEDBACK,
+        'redirect' => BoltFormsEvents::SUBMISSION_PROCESS_REDIRECT,
+    ];
 
     /**
      * Constructor.
      *
      * @param BoltForms                $boltForms
+     * @param Config                   $config
      * @param Container                $processors
      * @param Container                $handlers
      * @param EventDispatcherInterface $dispatcher
      * @param LoggerInterface          $loggerSystem
-     * @param Application              $app
+     * @param FlashBagInterface        $feedback
+     * @param bool                     $debug
      */
     public function __construct(
         BoltForms $boltForms,
+        Config $config,
         Container $processors,
         Container $handlers,
         EventDispatcherInterface $dispatcher,
         LoggerInterface $loggerSystem,
-        Application $app
+        FlashBagInterface $feedback,
+        $debug
     ) {
         $this->boltForms = $boltForms;
+        $this->config = $config;
         $this->processors = $processors;
         $this->handlers = $handlers;
         $this->dispatcher = $dispatcher;
         $this->loggerSystem = $loggerSystem;
-
-        $this->app = $app;
-    }
-
-    /**
-     * {@inheritdoc}
-     */
-    public static function getSubscribedEvents()
-    {
-        return [
-            BoltFormsEvents::SUBMISSION_PROCESS_FIELDS      => ['onProcessLifecycleEvent', 0],
-            BoltFormsEvents::SUBMISSION_PROCESS_CONTENTTYPE => ['onProcessLifecycleEvent', 0],
-            BoltFormsEvents::SUBMISSION_PROCESS_DATABASE    => ['onProcessLifecycleEvent', 0],
-            BoltFormsEvents::SUBMISSION_PROCESS_EMAIL       => ['onProcessLifecycleEvent', 0],
-            BoltFormsEvents::SUBMISSION_PROCESS_FEEDBACK    => ['onProcessLifecycleEvent', 0],
-            BoltFormsEvents::SUBMISSION_PROCESS_REDIRECT    => ['onProcessLifecycleEvent', 0],
-        ];
+        $this->feedback = $feedback;
+        $this->result = new Result();
+        $this->debug = $debug;
     }
 
     /**
@@ -115,26 +121,16 @@ class Processor implements EventSubscriberInterface
      * @param string                   $eventName
      * @param EventDispatcherInterface $dispatcher
      */
-    public function onProcessLifecycleEvent(LifecycleEvent $lifeEvent, $eventName, EventDispatcherInterface $dispatcher)
+    public function runInternalProcessor(LifecycleEvent $lifeEvent, $eventName, EventDispatcherInterface $dispatcher)
     {
-        $map = [
-            BoltFormsEvents::SUBMISSION_PROCESS_FIELDS      => 'fields',
-            BoltFormsEvents::SUBMISSION_PROCESS_CONTENTTYPE => 'content',
-            BoltFormsEvents::SUBMISSION_PROCESS_DATABASE    => 'database',
-            BoltFormsEvents::SUBMISSION_PROCESS_EMAIL       => 'email',
-            BoltFormsEvents::SUBMISSION_PROCESS_FEEDBACK    => 'feedback',
-            BoltFormsEvents::SUBMISSION_PROCESS_REDIRECT    => 'redirect',
-        ];
-        $key = $map[$eventName];
+        $key = $this->getEventMethodName($eventName);
+        if ($key === null) {
+            throw new \RuntimeException(sprintf('No internal process mapping to "%s"', $eventName));
+        }
 
         /** @var ProcessorInterface $processor */
         $processor = $this->processors[$key];
-        try {
-            $processor->process($lifeEvent, $eventName, $dispatcher);
-        } catch (InternalProcessorException $e) {
-            $this->message('An internal processing error has occurred, and form submission has failed!', static::FEEDBACK_ERROR, LogLevel::ERROR);
-            $this->handleInternalProcessorException($e);
-        }
+        $processor->process($lifeEvent, $eventName, $dispatcher);
 
         // Move any messages generated
         foreach ($processor->getMessages() as $message) {
@@ -147,57 +143,38 @@ class Processor implements EventSubscriberInterface
      *
      * @param FormConfig $formConfig
      * @param array      $reCaptchaResponse
-     * @param boolean    $returnData
      *
      * @throws FormValidationException
-     * @throws \Exception
+     * @throws Exception
      *
-     * @return FormData|bool
+     * @return Result
      */
-    public function process(FormConfig $formConfig, array $reCaptchaResponse, $returnData = false)
+    public function process(FormConfig $formConfig, array $reCaptchaResponse)
     {
         $formName = $formConfig->getName();
         /** @var Handler\PostRequest $requestHandler*/
         $requestHandler = $this->handlers['request'];
-        /** @var FormData $formData */
+        /** @var Entity\Entity $formData */
         $formData = $requestHandler->handle($formName, $this->boltForms, $this->dispatcher);
 
         if ($formData !== null && $reCaptchaResponse['success']) {
             $this->dispatchProcessors($formConfig, $formData);
 
-            return $returnData ? $formData : true;
+            return $this->result;
         }
 
         throw new FormValidationException($formConfig->getFeedback()->getErrorMessage());
     }
 
     /**
-     * Handle an internal exception.
-     *
-     * @param InternalProcessorException $e
-     *
-     * @throws \Exception
-     */
-    protected function handleInternalProcessorException(InternalProcessorException $e)
-    {
-        $previous = $e->getPrevious() ?: $e;
-        if ($e instanceof FileUploadException) {
-            $this->message($e->getMessage());
-            $this->exception($previous, $e->isAbort(), $e->getSystemMessage());
-        } else {
-            $this->exception($previous, $e->isAbort(), $e->getMessage());
-        }
-    }
-
-    /**
      * Dispatch all the processing events.
      *
-     * @param FormConfig $formConfig
-     * @param FormData   $formData
+     * @param FormConfig    $formConfig
+     * @param Entity\Entity $formData
      *
-     * @throws \Exception
+     * @throws Exception
      */
-    protected function dispatchProcessors(FormConfig $formConfig, FormData $formData)
+    protected function dispatchProcessors(FormConfig $formConfig, Entity\Entity $formData)
     {
         $formName = $formConfig->getName();
         /** @var Form $form */
@@ -208,6 +185,7 @@ class Processor implements EventSubscriberInterface
 
         // Prepare fields
         $this->dispatch(BoltFormsEvents::SUBMISSION_PROCESS_FIELDS, $lifeEvent);
+        $this->dispatch(BoltFormsEvents::SUBMISSION_PROCESS_UPLOADS, $lifeEvent);
 
         // Process
         if ($formConfig->getDatabase()->getContentType()) {
@@ -221,7 +199,7 @@ class Processor implements EventSubscriberInterface
         }
 
         // Post processing event
-        $processorEvent = new ProcessorEvent($formName, $formData->all());
+        $processorEvent = new ProcessorEvent($formName, $formData);
         $this->dispatch(BoltFormsEvents::SUBMISSION_POST_PROCESSOR, $processorEvent);
 
         // Feedback notices
@@ -237,26 +215,52 @@ class Processor implements EventSubscriberInterface
      * @param string                $eventName
      * @param EventDispatcher\Event $event
      *
-     * @throws \Exception
+     * @throws Exception
      */
     protected function dispatch($eventName, EventDispatcher\Event $event)
     {
-        if ($listeners = $this->dispatcher->getListeners($eventName)) {
-            foreach ($listeners as $listener) {
-                if ($event->isPropagationStopped()) {
-                    break;
+        $listeners = $this->dispatcher->getListeners($eventName);
+        if (!is_array($listeners)) {
+            return;
+        }
+
+        foreach ($listeners as $listener) {
+            if ($event->isPropagationStopped()) {
+                break;
+            }
+            try {
+                call_user_func($listener, $event, $eventName, $this->dispatcher);
+                $this->result->passEvent($eventName);
+            } catch (Exception $e) {
+                $this->result->failEvent($eventName);
+                $this->exception($e, false, 'An event dispatcher encountered an exception.');
+
+                // If we have processor exceptions, and debugging is turned on, out of here!
+                if ($this->debug) {
+                    throw $e;
                 }
-                try {
-                    call_user_func($listener, $event, $eventName, $this->dispatcher);
-                } catch (InternalProcessorException $e) {
+                // Rethrow early exceptions to stop processing.
+                if ($e instanceof FormOptionException) {
                     throw $e;
-                } catch (HttpException $e) {
+                }
+                // Rethrow redirect exception;
+                if ($e instanceof HttpException) {
                     throw $e;
-                } catch (\Exception $e) {
-                    $this->exception($e, false, 'An event dispatcher encountered an exception.');
                 }
             }
         }
+    }
+
+    /**
+     * @param string $name
+     *
+     * @return array|null
+     */
+    protected function getEventMethodName($name)
+    {
+        $map = array_flip(self::$eventMap);
+
+        return isset($map[$name]) && ($value = $map[$name]) ? $value : null;
     }
 
     /**
@@ -264,7 +268,7 @@ class Processor implements EventSubscriberInterface
      */
     protected function getFeedback()
     {
-        return $this->app['boltforms.feedback'];
+        return $this->feedback;
     }
 
     /**
@@ -273,13 +277,5 @@ class Processor implements EventSubscriberInterface
     protected function getLogger()
     {
         return $this->loggerSystem;
-    }
-
-    /**
-     * {@inheritdoc}
-     */
-    protected function getMailer()
-    {
-        return $this->app['mailer'];
     }
 }

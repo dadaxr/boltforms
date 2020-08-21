@@ -1,6 +1,6 @@
 {
     "name": "bolt/boltforms",
-    "description": "Symfony Forms API for bolt",
+    "description": "Powerful and flexible HTML form generator for Bolt based on Symfony Forms",
     "type": "bolt-extension",
     "keywords": [
         "forms",
@@ -11,7 +11,8 @@
     ],
     "require": {
         "bolt/bolt": "^3.0",
-        "bolt/email-spooler": "^3.0"
+        "bolt/email-spooler": "^3.0",
+        "google/recaptcha": "^1.1.2"
     },
     "require-dev": {
         "phpunit/phpunit": "^4.7"
@@ -19,7 +20,10 @@
     "suggest": {
         "rossriley/formeditor": "A UI editor for form configuration."
     },
-    "license": "GPL-3.0+",
+    "license": [
+        "GPL-3.0+",
+        "LGPL-3.0+"
+    ],
     "authors": [
         {
             "name": "Gawain Lynch",
@@ -32,11 +36,10 @@
         "psr-4": {
             "Bolt\\Extension\\Bolt\\BoltForms\\": [
                 "src/"
-            ],
-            "ReCaptcha\\": "lib/ReCaptcha/"
+            ]
         },
         "classmap": [
-            "doc/example/"
+            "docs/example/"
         ]
     },
     "autoload-dev": {
@@ -50,7 +53,7 @@
         "bolt-class": "Bolt\\Extension\\Bolt\\BoltForms\\BoltFormsExtension",
         "bolt-icon": "icon-boltforms.png",
         "branch-alias": {
-            "dev-master": "3.1.x-dev"
+            "dev-4.0": "4.0.x-dev"
         }
     }
 }

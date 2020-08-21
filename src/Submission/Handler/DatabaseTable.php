@@ -4,7 +4,7 @@ namespace Bolt\Extension\Bolt\BoltForms\Submission\Handler;
 
 use Bolt\Extension\Bolt\BoltForms\Config\MetaData;
 use Bolt\Extension\Bolt\BoltForms\Exception\InternalProcessorException;
-use Bolt\Extension\Bolt\BoltForms\FormData;
+use Bolt\Storage\Entity;
 
 /**
  * Database functions for BoltForms
@@ -12,9 +12,9 @@ use Bolt\Extension\Bolt\BoltForms\FormData;
  * Copyright (c) 2014-2016 Gawain Lynch
  *
  * This program is free software: you can redistribute it and/or modify
- * it under the terms of the GNU General Public License as published by
- * the Free Software Foundation, either version 3 of the License, or
- * (at your option) any later version.
+ * it under the terms of the GNU General Public License or GNU Lesser
+ * General Public License as published by the Free Software Foundation,
+ * either version 3 of the Licenses, or (at your option) any later version.
  *
  * This program is distributed in the hope that it will be useful,
  * but WITHOUT ANY WARRANTY; without even the implied warranty of
@@ -27,19 +27,20 @@ use Bolt\Extension\Bolt\BoltForms\FormData;
  * @author    Gawain Lynch <gawain.lynch@gmail.com>
  * @copyright Copyright (c) 2014-2016, Gawain Lynch
  * @license   http://opensource.org/licenses/GPL-3.0 GNU Public License 3.0
+ * @license   http://opensource.org/licenses/LGPL-3.0 GNU Lesser General Public License 3.0
  */
 class DatabaseTable extends AbstractHandler
 {
     /**
      * Write out form data to a specified database table row.
      *
-     * @param string   $tableName
-     * @param FormData $formData
-     * @param MetaData $formMetaData
+     * @param string        $tableName
+     * @param Entity\Entity $formData
+     * @param MetaData      $formMetaData
      *
      * @throws InternalProcessorException
      */
-    public function handle($tableName, FormData $formData, MetaData $formMetaData)
+    public function handle($tableName, Entity\Entity $formData, MetaData $formMetaData)
     {
         $saveData = [];
         $connection = $this->getEntityManager()->getConnection();
@@ -60,8 +61,12 @@ class DatabaseTable extends AbstractHandler
             // Only attempt to insert fields with existing data this way you can
             // have fields in your table that are not in the form eg. an auto
             // increment id field of a field to track status of a submission
-            if ($formData->has($colName)) {
-                $saveData[$colName] = $formData->get($colName, true);
+            if (isset($formData[$colName])) {
+                $data = $formData->get($colName, null, true);
+                if (is_array($data)) {
+                    $data = implode(', ', $data);
+                }
+                $saveData[$colName] = $data;
             }
 
             // Add any meta values that are requested for 'database' use

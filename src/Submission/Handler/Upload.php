@@ -6,6 +6,7 @@ use Bolt\Extension\Bolt\BoltForms\Config\Config;
 use Bolt\Extension\Bolt\BoltForms\Config\FormConfig;
 use Bolt\Extension\Bolt\BoltForms\Exception\FileUploadException;
 use Bolt\Extension\Bolt\BoltForms\Exception\InternalProcessorException;
+use Bolt\Extension\Bolt\BoltForms\Submission\File;
 use Symfony\Component\Filesystem\Exception\IOException;
 use Symfony\Component\Filesystem\Filesystem;
 use Symfony\Component\HttpFoundation\File\Exception\FileException;
@@ -18,9 +19,9 @@ use Symfony\Component\HttpFoundation\Session\Flash\FlashBagInterface;
  * Copyright (c) 2014-2016 Gawain Lynch
  *
  * This program is free software: you can redistribute it and/or modify
- * it under the terms of the GNU General Public License as published by
- * the Free Software Foundation, either version 3 of the License, or
- * (at your option) any later version.
+ * it under the terms of the GNU General Public License or GNU Lesser
+ * General Public License as published by the Free Software Foundation,
+ * either version 3 of the Licenses, or (at your option) any later version.
  *
  * This program is distributed in the hope that it will be useful,
  * but WITHOUT ANY WARRANTY; without even the implied warranty of
@@ -33,6 +34,7 @@ use Symfony\Component\HttpFoundation\Session\Flash\FlashBagInterface;
  * @author    Gawain Lynch <gawain.lynch@gmail.com>
  * @copyright Copyright (c) 2014-2016, Gawain Lynch
  * @license   http://opensource.org/licenses/GPL-3.0 GNU Public License 3.0
+ * @license   http://opensource.org/licenses/LGPL-3.0 GNU Lesser General Public License 3.0
  */
 class Upload
 {
@@ -42,8 +44,6 @@ class Upload
     private $formConfig;
     /** @var UploadedFile */
     private $file;
-    /** @var FlashBagInterface */
-    private $feedback;
 
     /** @var string */
     private $fileName;
@@ -52,28 +52,47 @@ class Upload
     /** @var string */
     private $fullPath;
     /** @var boolean */
-    private $valid;
-    /** @var boolean */
     private $final;
 
     /**
      * Constructor.
      *
-     * @param Config            $config
-     * @param FormConfig        $formConfig
-     * @param UploadedFile      $file
-     * @param FlashBagInterface $feedback
+     * @param Config       $config
+     * @param FormConfig   $formConfig
+     * @param UploadedFile $file
      */
-    public function __construct(Config $config, FormConfig $formConfig, UploadedFile $file, FlashBagInterface $feedback)
+    public function __construct(Config $config, FormConfig $formConfig, UploadedFile $file)
     {
         $this->config = $config;
         $this->formConfig = $formConfig;
         $this->file = $file;
-        $this->feedback = $feedback;
+    }
 
-        $this->fullPath = (string) $file;
-        $this->fileName = basename($this->fullPath);
-        $this->valid = $file->isValid();
+    /**
+     * Move the uploaded file from the temporary location to the permanent one
+     * if required by configuration.
+     *
+     * @param FlashBagInterface $feedback
+     *
+     * @throws FileUploadException
+     *
+     * @return File
+     */
+    public function handle(FlashBagInterface $feedback)
+    {
+        $this->checkDirectories();
+
+        $targetDir = $this->getTargetFileDirectory();
+        $targetFile = $this->getTargetFileName($feedback);
+
+        try {
+            $this->file->move($targetDir, $targetFile);
+        } catch (FileException $e) {
+            throw new FileUploadException($e->getMessage(), $e->getMessage(), $e->getCode(), $e, false);
+        }
+        $this->fullPath = realpath($targetDir . DIRECTORY_SEPARATOR . $targetFile);
+
+        return new File($this->fullPath, true, $this->config->getUploads()->getBaseDirectory());
     }
 
     public function __toString()
@@ -84,7 +103,7 @@ class Upload
     /**
      * Get the uploaded file object.
      *
-     * @return \Symfony\Component\HttpFoundation\File\File
+     * @return UploadedFile
      */
     public function getFile()
     {
@@ -98,7 +117,7 @@ class Upload
      */
     public function isValid()
     {
-        return $this->valid;
+        return $this->file->isValid();
     }
 
     /**
@@ -108,7 +127,7 @@ class Upload
      */
     public function fullPath()
     {
-        return $this->fullPath;
+        return (string) $this->fullPath;
     }
 
     /**
@@ -133,37 +152,10 @@ class Upload
     }
 
     /**
-     * Move the uploaded file from the temporary location to the permanent one
-     * if required by configuration.
-     *
-     * @throws FileUploadException
-     *
-     * @return true
-     */
-    public function move()
-    {
-        $this->checkDirectories();
-
-        $targetDir = $this->getTargetFileDirectory();
-        $targetFile = $this->getTargetFileName();
-
-        try {
-            $this->file->move($targetDir, $targetFile);
-        } catch (FileException $e) {
-            throw new FileUploadException($e->getMessage(), $e->getMessage(), $e->getCode(), $e, false);
-        }
-        $this->fullPath = realpath($targetDir . DIRECTORY_SEPARATOR . $targetFile);
-
-        return true;
-    }
-
-    /**
      * Check that the base directory, and optional sub-directory, is/are valid
      * and exist.
      *
      * @throws FileUploadException
-     *
-     * @return boolean
      */
     protected function checkDirectories()
     {
@@ -177,7 +169,7 @@ class Upload
                 $error = 'File upload aborted as the target directory could not be created: ' . $e->getMessage();
                 $systemMessage = sprintf('[BoltForms] %s Check permissions on %s', $error, $dir);
 
-                throw new FileUploadException($error, $systemMessage, $e->getCode(), $e);
+                throw new FileUploadException($error, $systemMessage, $e->getCode(), $e, false);
             }
         }
 
@@ -213,9 +205,11 @@ class Upload
     /**
      * Get the full target name for the uploaded file.
      *
+     * @param FlashBagInterface $feedback
+     *
      * @return string
      */
-    protected function getTargetFileName()
+    protected function getTargetFileName(FlashBagInterface $feedback)
     {
         if ($this->final) {
             return $this->fileName;
@@ -243,7 +237,7 @@ class Upload
             $i++;
         }
 
-        $this->feedback->add('debug', "Setting uploaded file '$originalName' to use the name '$fileName'.");
+        $feedback->add('debug', "Setting uploaded file '$originalName' to use the name '$fileName'.");
         $this->final = true;
 
         return $this->fileName = $fileName;

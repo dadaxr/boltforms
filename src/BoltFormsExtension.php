@@ -3,6 +3,7 @@
 namespace Bolt\Extension\Bolt\BoltForms;
 
 use Bolt\Extension\Bolt\BoltForms\Config\FieldMap;
+use Bolt\Extension\Bolt\BoltForms\Subscriber\ProcessLifecycleSubscriber;
 use Bolt\Extension\SimpleExtension;
 use Silex\Application;
 
@@ -12,9 +13,9 @@ use Silex\Application;
  * Copyright (c) 2014-2016 Gawain Lynch
  *
  * This program is free software: you can redistribute it and/or modify
- * it under the terms of the GNU General Public License as published by
- * the Free Software Foundation, either version 3 of the License, or
- * (at your option) any later version.
+ * it under the terms of the GNU General Public License or GNU Lesser
+ * General Public License as published by the Free Software Foundation,
+ * either version 3 of the Licenses, or (at your option) any later version.
  *
  * This program is distributed in the hope that it will be useful,
  * but WITHOUT ANY WARRANTY; without even the implied warranty of
@@ -27,6 +28,7 @@ use Silex\Application;
  * @author    Gawain Lynch <gawain.lynch@gmail.com>
  * @copyright Copyright (c) 2014-2016, Gawain Lynch
  * @license   http://opensource.org/licenses/GPL-3.0 GNU Public License 3.0
+ * @license   http://opensource.org/licenses/LGPL-3.0 GNU Lesser General Public License 3.0
  */
 class BoltFormsExtension extends SimpleExtension
 {
@@ -50,7 +52,7 @@ class BoltFormsExtension extends SimpleExtension
         parent::boot($app);
 
         $dispatcher = $this->container['dispatcher'];
-        $dispatcher->addSubscriber($app['boltforms.processor']);
+        $dispatcher->addSubscriber(new ProcessLifecycleSubscriber($app));
     }
 
     /**
@@ -109,19 +111,6 @@ class BoltFormsExtension extends SimpleExtension
     /**
      * {@inheritdoc}
      */
-    protected function registerTwigFunctions()
-    {
-        $app = $this->getContainer();
-
-        return [
-            'boltforms'         => [[$app['boltforms.twig'], 'twigBoltForms'], ['is_safe' => ['html'], 'is_safe_callback' => true]],
-            'boltforms_uploads' => [[$app['boltforms.twig'], 'twigBoltFormsUploads'], []],
-        ];
-    }
-
-    /**
-     * {@inheritdoc}
-     */
     protected function isSafe()
     {
         return true;
@@ -137,18 +126,20 @@ class BoltFormsExtension extends SimpleExtension
         return [
             'csrf'      => true,
             'recaptcha' => [
-                'enabled'       => false,
-                'label'         => "Please enter the CAPTCHA text to prove you're a human",
-                'public_key'    => '',
-                'private_key'   => '',
-                'error_message' => "The CAPTCHA wasn't entered correctly. Please try again.",
-                'theme'         => 'clean',
+                'enabled'        => false,
+                'label'          => "Please enter the CAPTCHA text to prove you're a human",
+                'public_key'     => '',
+                'private_key'    => '',
+                'error_message'  => "The CAPTCHA wasn't entered correctly. Please try again.",
+                'theme'          => 'clean',
+                'badge_location' => 'bottomright',
             ],
             'templates' => [
                 'ajax'       => '@BoltForms/asset/_ajax.twig',
                 'css'        => '@BoltForms/asset/_css.twig',
+                'js'         => '@BoltForms/asset/_js.twig',
                 'email'      => '@BoltForms/email/email.twig',
-                'subject'    => '@BoltForms/email/_subject.twig',
+                'subject'    => '@BoltForms/email/subject.twig',
                 'messages'   => '@BoltForms/feedback/_messages.twig',
                 'exception'  => '@BoltForms/feedback/_exception.twig',
                 'files'      => '@BoltForms/file/browser.twig',

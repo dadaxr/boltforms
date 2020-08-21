@@ -8,9 +8,9 @@ namespace Bolt\Extension\Bolt\BoltForms\Config;
  * Copyright (c) 2014-2016 Gawain Lynch
  *
  * This program is free software: you can redistribute it and/or modify
- * it under the terms of the GNU General Public License as published by
- * the Free Software Foundation, either version 3 of the License, or
- * (at your option) any later version.
+ * it under the terms of the GNU General Public License or GNU Lesser
+ * General Public License as published by the Free Software Foundation,
+ * either version 3 of the Licenses, or (at your option) any later version.
  *
  * This program is distributed in the hope that it will be useful,
  * but WITHOUT ANY WARRANTY; without even the implied warranty of
@@ -23,11 +23,10 @@ namespace Bolt\Extension\Bolt\BoltForms\Config;
  * @author    Gawain Lynch <gawain.lynch@gmail.com>
  * @copyright Copyright (c) 2014-2016, Gawain Lynch
  * @license   http://opensource.org/licenses/GPL-3.0 GNU Public License 3.0
+ * @license   http://opensource.org/licenses/LGPL-3.0 GNU Lesser General Public License 3.0
  */
 class FormConfig
 {
-    /** @var Config */
-    private $rootConfig;
     /** @var string */
     protected $name;
     /** @var Form\DatabaseOptionsBag */
@@ -44,6 +43,11 @@ class FormConfig
     protected $templates;
     /** @var Form\UploadsOptionsBag */
     protected $uploads;
+    /** @var string */
+    protected $formRecaptcha;
+
+    /** @var Config */
+    private $rootConfig;
 
     /**
      * Constructor.
@@ -60,13 +64,14 @@ class FormConfig
         $defaults = $this->getDefaults();
         $formConfig = $this->mergeRecursiveDistinct($defaults, $formConfig);
 
-        $this->database     = new Form\DatabaseOptionsBag($formConfig['database']);
         $this->feedback     = new Form\FeedbackOptionsBag($formConfig['feedback']);
         $this->fields       = new Form\FieldsBag($formConfig['fields']);
-        $this->submission   = new Form\SubmissionOptionsBag($formConfig['submission']);
+        $this->database     = new Form\DatabaseOptionsBag($formConfig['database'], $this->fields);
         $this->notification = new Form\NotificationOptionsBag($formConfig['notification'], $rootConfig);
+        $this->submission   = new Form\SubmissionOptionsBag($formConfig['submission']);
         $this->templates    = new Form\TemplateOptionsBag($formConfig['templates'], $rootConfig);
         $this->uploads      = new Form\UploadsOptionsBag($formConfig['uploads']);
+        $this->formRecaptcha = $formConfig['recaptcha'] == false ? false : true;
     }
 
     /**
@@ -158,6 +163,16 @@ class FormConfig
     }
 
     /**
+     * Get form recaptcha status.
+     *
+     * @return bool
+     */
+    public function getRecaptcha()
+    {
+        return $this->formRecaptcha;
+    }
+
+    /**
      * A set of default keys for a form's config.
      *
      * @return array
@@ -204,7 +219,8 @@ class FormConfig
             'uploads' => [
                 'subdirectory' => null,
             ],
-            'fields' => [],
+            'fields'    => [],
+            'recaptcha' => true,
         ];
     }
 
@@ -223,7 +239,7 @@ class FormConfig
         foreach ($array2 as $key => &$value) {
             if (is_array($value) && isset($merged[$key]) && is_array($merged[$key])) {
                 $merged[$key] = self::mergeRecursiveDistinct($merged[$key], $value);
-            } elseif (!empty($value)) {
+            } elseif (!empty($value) || $value == false) {
                 $merged[$key] = $value;
             }
         }

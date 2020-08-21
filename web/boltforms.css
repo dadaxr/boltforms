@@ -25,7 +25,13 @@ p.boltform-error {
     background-color: #F2DEDE;
 }
 
+ul.boltform-error {
+    margin-left: 0;
+    padding-left: 0;
+}
+
 li.boltform-error {
+    list-style: none;
     border: 1px solid #EED3D7;
     color: #B94A48;
     background-color: #F2DEDE;
@@ -35,4 +41,8 @@ p.boltform-message {
     border: 1px solid #D6E9C6;
     color: #468847;
     background-color: #DFF0D8;
+}
+
+.boltforms-preview-image {
+    display: inline-block;
 }

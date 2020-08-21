@@ -4,8 +4,9 @@ namespace Bolt\Extension\Bolt\BoltForms\Factory;
 
 use Bolt\Extension\Bolt\BoltForms\BoltForms;
 use Bolt\Extension\Bolt\BoltForms\Config\Config;
+use Bolt\Extension\Bolt\BoltForms\Submission\Result;
 use Symfony\Component\Form\Form;
-use Symfony\Component\HttpFoundation\Session\Flash\FlashBag;
+use Symfony\Component\HttpFoundation\Session\Flash\FlashBagInterface;
 
 /**
  * Form context compiler.
@@ -13,9 +14,9 @@ use Symfony\Component\HttpFoundation\Session\Flash\FlashBag;
  * Copyright (c) 2014-2016 Gawain Lynch
  *
  * This program is free software: you can redistribute it and/or modify
- * it under the terms of the GNU General Public License as published by
- * the Free Software Foundation, either version 3 of the License, or
- * (at your option) any later version.
+ * it under the terms of the GNU General Public License or GNU Lesser
+ * General Public License as published by the Free Software Foundation,
+ * either version 3 of the Licenses, or (at your option) any later version.
  *
  * This program is distributed in the hope that it will be useful,
  * but WITHOUT ANY WARRANTY; without even the implied warranty of
@@ -28,6 +29,7 @@ use Symfony\Component\HttpFoundation\Session\Flash\FlashBag;
  * @author    Gawain Lynch <gawain.lynch@gmail.com>
  * @copyright Copyright (c) 2014-2016, Gawain Lynch
  * @license   http://opensource.org/licenses/GPL-3.0 GNU Public License 3.0
+ * @license   http://opensource.org/licenses/LGPL-3.0 GNU Lesser General Public License 3.0
  */
 class FormContext
 {
@@ -42,8 +44,8 @@ class FormContext
     protected $htmlPreSubmit;
     /** @var string */
     protected $htmlPostSubmit;
-    /** @var bool */
-    protected $sent = false;
+    /** @var Result */
+    protected $result;
     /** @var array */
     protected $reCaptchaResponse;
 
@@ -58,14 +60,14 @@ class FormContext
     }
 
     /**
-     * @param BoltForms $boltForms
-     * @param Config    $config
-     * @param string    $formName
-     * @param FlashBag  $feedBack
+     * @param BoltForms         $boltForms
+     * @param Config            $config
+     * @param string            $formName
+     * @param FlashBagInterface $feedBack
      *
      * @return array
      */
-    public function build(BoltForms $boltForms, Config $config, $formName, FlashBag $feedBack)
+    public function build(BoltForms $boltForms, Config $config, $formName, FlashBagInterface $feedBack)
     {
         // reCaptcha configuration
         $reCaptchaConfig = $config->getReCaptcha();
@@ -81,23 +83,24 @@ class FormContext
             'defaults'  => $this->defaults,
             'html_pre'  => $this->htmlPreSubmit,
             'html_post' => $this->htmlPostSubmit,
-            'error'     => !empty($errors) ? $errors[0] : null, // @deprecated
-            'message'   => !empty($info) ? $info[0] : null,     // @deprecated
             'messages'  => [
                 'info'  => $info,
                 'error' => $errors,
                 'debug' => $debugs,
             ],
-            'sent'      => $this->sent,
+            'sent'      => $this->result ? $this->result->isPass('email') : false,
+            'result'    => $this->result ?: new Result(),
             'templates' => $config->getForm($formName)->getTemplates(),
             'recaptcha' => [
-                'enabled'       => $reCaptchaConfig->isEnabled(),
-                'label'         => $reCaptchaConfig->getLabel(),
-                'public_key'    => $reCaptchaConfig->getPublicKey(),
-                'theme'         => $reCaptchaConfig->getTheme(),
-                'error_message' => $reCaptchaConfig->getErrorMessage(),
-                'error_codes'   => $this->reCaptchaResponse ? $this->reCaptchaResponse['errorCodes'] : null,
-                'valid'         => $this->reCaptchaResponse ? $this->reCaptchaResponse['success'] : null,
+                'enabled'        => $reCaptchaConfig->isEnabled() && $config->getForm($formName)->getReCaptcha() !== false,
+                'label'          => $reCaptchaConfig->getLabel(),
+                'public_key'     => $reCaptchaConfig->getPublicKey(),
+                'theme'          => $reCaptchaConfig->getTheme(),
+                'type'           => $reCaptchaConfig->getType(),
+                'error_message'  => $reCaptchaConfig->getErrorMessage(),
+                'badge_location' => $reCaptchaConfig->getBadgeLocation(),
+                'error_codes'    => $this->reCaptchaResponse ? $this->reCaptchaResponse['errorCodes'] : null,
+                'valid'          => $this->reCaptchaResponse ? $this->reCaptchaResponse['success'] : null,
             ],
             'formname'         => $formName,
             'form_start_param' => [
@@ -163,13 +166,13 @@ class FormContext
     }
 
     /**
-     * @param boolean $sent
+     * @param Result $result
      *
      * @return FormContext
      */
-    public function setSent($sent)
+    public function setResult(Result $result)
     {
-        $this->sent = $sent;
+        $this->result = $result;
 
         return $this;
     }

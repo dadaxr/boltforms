@@ -3,8 +3,8 @@
 namespace Bolt\Extension\Bolt\BoltForms\Submission\Handler;
 
 use Bolt\Extension\Bolt\BoltForms\Config\FormConfig;
-use Bolt\Extension\Bolt\BoltForms\FormData;
 use Bolt\Helpers\Arr;
+use Bolt\Storage\Entity\Entity;
 use Symfony\Component\HttpFoundation\RedirectResponse;
 use Symfony\Component\HttpFoundation\Request;
 use Symfony\Component\Routing\Exception\ResourceNotFoundException;
@@ -16,9 +16,9 @@ use Symfony\Component\Routing\Matcher\RedirectableUrlMatcher;
  * Copyright (c) 2014-2016 Gawain Lynch
  *
  * This program is free software: you can redistribute it and/or modify
- * it under the terms of the GNU General Public License as published by
- * the Free Software Foundation, either version 3 of the License, or
- * (at your option) any later version.
+ * it under the terms of the GNU General Public License or GNU Lesser
+ * General Public License as published by the Free Software Foundation,
+ * either version 3 of the Licenses, or (at your option) any later version.
  *
  * This program is distributed in the hope that it will be useful,
  * but WITHOUT ANY WARRANTY; without even the implied warranty of
@@ -31,6 +31,7 @@ use Symfony\Component\Routing\Matcher\RedirectableUrlMatcher;
  * @author    Gawain Lynch <gawain.lynch@gmail.com>
  * @copyright Copyright (c) 2014-2016, Gawain Lynch
  * @license   http://opensource.org/licenses/GPL-3.0 GNU Public License 3.0
+ * @license   http://opensource.org/licenses/LGPL-3.0 GNU Lesser General Public License 3.0
  */
 class Redirect
 {
@@ -51,13 +52,14 @@ class Redirect
      * Do a redirect.
      *
      * @param FormConfig $formConfig
-     * @param FormData   $formData
+     * @param Entity $formData
+     * @return RedirectResponse
      */
-    public function handle(FormConfig $formConfig, FormData $formData)
+    public function handle(FormConfig $formConfig, Entity $formData)
     {
         $response = $this->getRedirectResponse($formConfig, $formData);
         if ($response instanceof RedirectResponse) {
-            $response->send();
+            return $response->send();
         }
     }
 
@@ -87,11 +89,11 @@ class Redirect
      * Build a GET query if required.
      *
      * @param FormConfig $formConfig
-     * @param FormData   $formData
+     * @param Entity     $formData
      *
      * @return string
      */
-    protected function getRedirectQuery(FormConfig $formConfig, FormData $formData)
+    protected function getRedirectQuery(FormConfig $formConfig, Entity $formData)
     {
         $query = $formConfig->getFeedback()->getRedirectQuery();
         if ($query === null) {
@@ -121,11 +123,11 @@ class Redirect
      * Get the redirect response object.
      *
      * @param FormConfig $formConfig
-     * @param FormData   $formData
+     * @param Entity     $formData
      *
      * @return RedirectResponse|false
      */
-    protected function getRedirectResponse(FormConfig $formConfig, FormData $formData)
+    protected function getRedirectResponse(FormConfig $formConfig, Entity $formData)
     {
         $redirect = $formConfig->getFeedback()->getRedirectTarget();
         $query = $this->getRedirectQuery($formConfig, $formData);

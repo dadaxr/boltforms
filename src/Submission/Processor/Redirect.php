@@ -6,6 +6,7 @@ use Bolt\Extension\Bolt\BoltForms\Event\LifecycleEvent;
 use Bolt\Extension\Bolt\BoltForms\Submission\Handler;
 use Pimple as Container;
 use Symfony\Component\EventDispatcher\EventDispatcherInterface;
+use Symfony\Component\HttpFoundation\RedirectResponse;
 use Symfony\Component\HttpFoundation\RequestStack;
 use Symfony\Component\HttpFoundation\Response;
 use Symfony\Component\HttpFoundation\Session\SessionInterface;
@@ -17,9 +18,9 @@ use Symfony\Component\HttpKernel\Exception\HttpException;
  * Copyright (c) 2014-2016 Gawain Lynch
  *
  * This program is free software: you can redistribute it and/or modify
- * it under the terms of the GNU General Public License as published by
- * the Free Software Foundation, either version 3 of the License, or
- * (at your option) any later version.
+ * it under the terms of the GNU General Public License or GNU Lesser
+ * General Public License as published by the Free Software Foundation,
+ * either version 3 of the Licenses, or (at your option) any later version.
  *
  * This program is distributed in the hope that it will be useful,
  * but WITHOUT ANY WARRANTY; without even the implied warranty of
@@ -32,6 +33,7 @@ use Symfony\Component\HttpKernel\Exception\HttpException;
  * @author    Gawain Lynch <gawain.lynch@gmail.com>
  * @copyright Copyright (c) 2014-2016, Gawain Lynch
  * @license   http://opensource.org/licenses/GPL-3.0 GNU Public License 3.0
+ * @license   http://opensource.org/licenses/LGPL-3.0 GNU Lesser General Public License 3.0
  */
 class Redirect extends AbstractProcessor
 {
@@ -43,9 +45,9 @@ class Redirect extends AbstractProcessor
     /**
      * Constructor.
      *
-     * @param Container              $handlers
-     * @param RequestStack           $requestStack
-     * @param SessionInterface       $session
+     * @param Container        $handlers
+     * @param RequestStack     $requestStack
+     * @param SessionInterface $session
      */
     public function __construct(Container $handlers, RequestStack $requestStack, SessionInterface $session)
     {
@@ -76,13 +78,16 @@ class Redirect extends AbstractProcessor
         /** @var Handler\Redirect $handler */
         $handler = $this->handlers['redirect'];
         if ($formConfig->getFeedback()->getRedirectTarget() !== null) {
-            $handler->handle($formConfig, $formData);
+            $response = $handler->handle($formConfig, $formData);
+            if ($response instanceof RedirectResponse) {
+                return;
+            }
         }
 
         // Do a get on the page as it was probably POSTed
         $request = $this->requestStack->getCurrentRequest();
         $handler->refresh($request);
 
-        throw new HttpException(Response::HTTP_OK, '', null, []);
+        throw new HttpException(Response::HTTP_FOUND, '', null, []);
     }
 }

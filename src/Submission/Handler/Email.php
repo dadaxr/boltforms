@@ -5,9 +5,9 @@ namespace Bolt\Extension\Bolt\BoltForms\Submission\Handler;
 use Bolt\Extension\Bolt\BoltForms\Config;
 use Bolt\Extension\Bolt\BoltForms\Event;
 use Bolt\Extension\Bolt\BoltForms\Exception\InternalProcessorException;
-use Bolt\Extension\Bolt\BoltForms\FormData;
 use Bolt\Extension\Bolt\BoltForms\Submission\Processor;
 use Bolt\Extension\Bolt\EmailSpooler\EventListener\QueueListener;
+use Bolt\Storage\Entity;
 use Bolt\Storage\EntityManager;
 use Psr\Log\LoggerInterface;
 use Psr\Log\LogLevel;
@@ -18,7 +18,10 @@ use Swift_TransportException as SwiftTransportException;
 use Symfony\Component\Console\Helper;
 use Symfony\Component\Console\Output\BufferedOutput;
 use Symfony\Component\EventDispatcher\EventDispatcherInterface;
-use Symfony\Component\HttpFoundation\Session\Flash\FlashBag;
+use Symfony\Component\HttpFoundation\File\File;
+use Symfony\Component\HttpFoundation\File\UploadedFile;
+use Symfony\Component\HttpFoundation\Session\SessionInterface;
+use Symfony\Component\Routing\Exception\RouteNotFoundException;
 use Symfony\Component\Routing\Generator\UrlGeneratorInterface;
 use Twig_Environment as TwigEnvironment;
 
@@ -28,9 +31,9 @@ use Twig_Environment as TwigEnvironment;
  * Copyright (c) 2014-2016 Gawain Lynch
  *
  * This program is free software: you can redistribute it and/or modify
- * it under the terms of the GNU General Public License as published by
- * the Free Software Foundation, either version 3 of the License, or
- * (at your option) any later version.
+ * it under the terms of the GNU General Public License or GNU Lesser
+ * General Public License as published by the Free Software Foundation,
+ * either version 3 of the Licenses, or (at your option) any later version.
  *
  * This program is distributed in the hope that it will be useful,
  * but WITHOUT ANY WARRANTY; without even the implied warranty of
@@ -43,6 +46,7 @@ use Twig_Environment as TwigEnvironment;
  * @author    Gawain Lynch <gawain.lynch@gmail.com>
  * @copyright Copyright (c) 2014-2016, Gawain Lynch
  * @license   http://opensource.org/licenses/GPL-3.0 GNU Public License 3.0
+ * @license   http://opensource.org/licenses/LGPL-3.0 GNU Lesser General Public License 3.0
  */
 class Email extends AbstractHandler
 {
@@ -75,7 +79,7 @@ class Email extends AbstractHandler
      *
      * @param Config\Config            $config
      * @param EntityManager            $entityManager
-     * @param FlashBag                 $feedback
+     * @param SessionInterface         $session
      * @param LoggerInterface          $logger
      * @param SwiftMailer              $mailer
      * @param EventDispatcherInterface $dispatcher
@@ -85,14 +89,14 @@ class Email extends AbstractHandler
     public function __construct(
         Config\Config $config,
         EntityManager $entityManager,
-        FlashBag $feedback,
+        SessionInterface $session,
         LoggerInterface $logger,
         SwiftMailer $mailer,
         EventDispatcherInterface $dispatcher,
         TwigEnvironment $twig,
         UrlGeneratorInterface $urlGenerator
     ) {
-        parent::__construct($config, $entityManager, $feedback, $logger, $mailer);
+        parent::__construct($config, $entityManager, $session, $logger, $mailer);
         $this->dispatcher = $dispatcher;
         $this->twig = $twig;
         $this->urlGenerator = $urlGenerator;
@@ -122,10 +126,10 @@ class Email extends AbstractHandler
      * Create a notification message.
      *
      * @param Config\FormConfig $formConfig
-     * @param FormData          $formData
+     * @param Entity\Entity     $formData
      * @param Config\MetaData   $formMetaData
      */
-    public function handle(Config\FormConfig $formConfig, FormData $formData, Config\MetaData $formMetaData)
+    public function handle(Config\FormConfig $formConfig, Entity\Entity $formData, Config\MetaData $formMetaData)
     {
         $emailConfig = new Config\EmailConfig($formConfig, $formData);
 
@@ -144,16 +148,25 @@ class Email extends AbstractHandler
      *
      * @param Config\FormConfig  $formConfig
      * @param Config\EmailConfig $emailConfig
-     * @param FormData           $formData
+     * @param Entity\Entity      $formData
      * @param Config\MetaData    $formMetaData
      */
-    private function compose(Config\FormConfig $formConfig, Config\EmailConfig $emailConfig, FormData $formData, Config\MetaData $formMetaData)
-    {
+    private function compose(
+        Config\FormConfig $formConfig,
+        Config\EmailConfig $emailConfig,
+        Entity\Entity $formData,
+        Config\MetaData $formMetaData
+    ) {
         // If the form has it's own templates defined, use those, else the globals.
         $templateSubject = $formConfig->getTemplates()->getSubject() ?: $this->getConfig()->getTemplates()->get('subject');
         $templateEmail = $formConfig->getTemplates()->getEmail() ?: $this->getConfig()->getTemplates()->get('email');
         /** @var Config\FieldMap\Email $fieldMap */
         $fieldMap = $this->getConfig()->getFieldMap()->get('email');
+
+        /*
+         * Build empty email
+         */
+        $this->emailMessage = SwiftMessage::newInstance();
 
         /*
          * Subject
@@ -182,9 +195,9 @@ class Email extends AbstractHandler
         $text = strip_tags(preg_replace('/<style\\b[^>]*>(.*?)<\\/style>/s', '', $body));
 
         /*
-         * Build email
+         * Append email parts
          */
-        $this->emailMessage = SwiftMessage::newInstance()
+        $this->emailMessage
             ->addPart($body, 'text/html')
             ->setSubject($subject)
             ->setBody($text)
@@ -197,41 +210,90 @@ class Email extends AbstractHandler
      *
      * @param Config\FormConfig  $formConfig
      * @param Config\EmailConfig $emailConfig
-     * @param FormData           $formData
+     * @param Entity\Entity      $formData
      *
      * @return array
      */
-    private function getBodyData(Config\FormConfig $formConfig, Config\EmailConfig $emailConfig, FormData $formData)
+    private function getBodyData(Config\FormConfig $formConfig, Config\EmailConfig $emailConfig, Entity\Entity $formData)
     {
         $bodyData = [];
-        foreach ($formData->all() as $fieldName => $value) {
+        foreach ($formData->toArray() as $fieldName => $value) {
+            if (!$formConfig->getFields()->has($fieldName)) {
+                continue;
+            }
             /** @var Config\Form\FieldBag $fieldConfig */
             $fieldConfig = $formConfig->getFields()->{$fieldName}();
             $formValue = $formData->get($fieldName);
 
-            if ($formData->get($fieldName) instanceof Upload) {
-                if ($formData->get($fieldName)->isValid() && $emailConfig->attachFiles()) {
-                    $fromPath = $formData->get($fieldName)->fullPath();
-                    $fileName = $formData->get($fieldName)->getFile()->getClientOriginalName();
-                    $attachment = \Swift_Attachment::fromPath($fromPath)->setFilename($fileName);
-                    $this->getEmailMessage()->attach($attachment);
+            $type = $fieldConfig->get('type');
+            if ($type === 'file') {
+                $files = $formValue;
+                if ($emailConfig->attachFiles()) {
+                    $this->setFileAttachments($files);
                 }
-                $relativePath = $formData->get($fieldName, true);
 
-                $bodyData[$fieldName] = sprintf(
-                    '<a href"%s">%s</a>',
-                    $this->urlGenerator->generate('BoltFormsDownload', ['file' => $relativePath], UrlGeneratorInterface::ABSOLUTE_URL),
-                    $formData->get($fieldName)->getFile()->getClientOriginalName()
-                );
-            } elseif ($fieldConfig->get('type') === 'choice') {
+                /** @var \Bolt\Extension\Bolt\BoltForms\Submission\File $file */
+                foreach ($files as $file) {
+                    $relativePath = $file->getRelativePath();
+                    $fileName = $file->getFilename();
+                    try {
+                        $link = $this->urlGenerator->generate(
+                            'BoltFormsDownload',
+                            ['file' => $relativePath],
+                            UrlGeneratorInterface::ABSOLUTE_URL
+                        );
+                    } catch (RouteNotFoundException $e) {
+                        $link = '';
+                    }
+                    $bodyData[$fieldName][$fileName] = $link;
+                }
+            } elseif ($type === 'choice') {
                 $options = $fieldConfig->getOptions();
                 $bodyData[$fieldName] = $options->get($fieldName, $formValue);
             } else {
-                $bodyData[$fieldName] = $formData->get($fieldName, true);
+                $bodyData[$fieldName] = $formData->get($fieldName, null, true);
             }
         }
 
         return $bodyData;
+    }
+
+    /**
+     * Attach uploaded files to the message body.
+     *
+     * @param File|File[] $formValues
+     */
+    private function setFileAttachments($formValues)
+    {
+        if ($formValues instanceof File) {
+            $this->attachFile($formValues);
+
+            return;
+        }
+
+        /** @var File $uploadedFile */
+        foreach ($formValues as $uploadedFile) {
+            if ($uploadedFile instanceof File) {
+                $this->attachFile($uploadedFile);
+            }
+        }
+    }
+
+    /**
+     * Attach a single uploaded file to the message body.
+     *
+     * @param File $uploadedFile
+     */
+    private function attachFile(File $uploadedFile)
+    {
+        $fromPath = $uploadedFile->getPathname();
+        if ($uploadedFile instanceof UploadedFile) {
+            $fileName = $uploadedFile->getClientOriginalName();
+        } else {
+            $fileName = $uploadedFile->getFilename();
+        }
+        $attachment = \Swift_Attachment::fromPath($fromPath)->setFilename($fileName);
+        $this->getEmailMessage()->attach($attachment);
     }
 
     /**
@@ -342,7 +404,7 @@ class Email extends AbstractHandler
      */
     private function log(Config\EmailConfig $emailConfig)
     {
-        if (!$emailConfig->isDebug()) {
+        if (!$emailConfig->isDebug() || !$emailConfig->isDebugSmtp()) {
             return;
         }
 
